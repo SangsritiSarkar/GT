@@ -339,6 +339,39 @@ def plot_categorical_bar(ax, value_counts: pd.Series, col: str, clean_title: str
     ax.set_ylabel(col, fontsize=12)
 
 
+def identify_id_columns_by_pattern(df, patterns=None, verbose=False):
+    
+    if patterns is None:
+        patterns = [
+            r'\b(?:id|no|num|number|key|serial|code|idx)\b', 
+            r'_id\b',       
+            r'id_',          
+            r'sl_no',       
+            r'reference',  
+            r'ref\b'        
+        ]
+    elif isinstance(patterns, str):
+        patterns = [patterns] 
+
+    potential_id_columns = set()
+
+    for col in df.columns:
+        original_col_name = col
+        normalized_col_name = normalize_col_name(col)
+
+        if verbose:
+            print(f"\n--- Analyzing column: '{original_col_name}' (Normalized: '{normalized_col_name}') ---")
+
+        for pattern in patterns:
+            if re.search(pattern, normalized_col_name, re.IGNORECASE):
+                potential_id_columns.add(original_col_name)
+                if verbose:
+                    print(f"  - Flagged by: Column name matches pattern '{pattern}'")
+                break
+
+    return list(potential_id_columns)
+
+
 def visualize_column_summary(
     active_sites_df: pd.DataFrame
 ) -> Tuple[List[Tuple[Any, str, List[str]]], List[str]]:
@@ -351,12 +384,18 @@ def visualize_column_summary(
 
     color_palette = ['#9370DB', '#FF6347', '#FFB300', '#32CD32', '#27AEEF']
 
-    cols_to_exclude = [normalize_col_name('id')]
+    
+    raw_cols_to_exclude = identify_id_columns_by_pattern(active_sites_df, verbose=True)
+    normalized_cols_to_exclude_set = {normalize_col_name(col) for col in raw_cols_to_exclude}
+
     score_keyword = 'score'
-    cols_for_viz = [col for col in active_sites_df.columns if normalize_col_name(col) not in cols_to_exclude]
     chart_data = []
 
-    for col in cols_for_viz:
+    for col in active_sites_df.columns:
+        if normalize_col_name(col) in normalized_cols_to_exclude_set:
+            print(f"Skipping visualization for excluded column: '{col}'") 
+            continue 
+
         clean_title = col.replace('_', ' ').replace('-', ' ').title()
 
         # --- Handle Numerical Columns ---
@@ -421,14 +460,18 @@ def visualize_column_summary(
 
             unique_count = non_null_series_filtered_for_plotting.nunique()
 
-            if unique_count == 0 or unique_count == len(non_null_series_filtered_for_plotting):
-
+            if unique_count == 0: 
                 nan_count_for_bullet = active_sites_df[col].isnull().sum() + (active_sites_df[col].astype(str).str.lower() == 'nan').sum()
                 if nan_count_for_bullet == len(active_sites_df):
                     chart_data.append((
                         None, f"{clean_title} Distribution (No valid data)",
                         generate_bullet_points_for_chart(active_sites_df, col, "categorical_bar")
                     ))
+                continue 
+
+            
+            if unique_count == len(non_null_series_filtered_for_plotting) and len(non_null_series_filtered_for_plotting) > 0:
+                print(f"Skipping visualization for column '{col}' due to all unique non-null values (likely an ID not caught by pattern).")
                 continue
 
             if unique_count <= 5:
@@ -465,6 +508,8 @@ def visualize_column_summary(
     # --- Hexbin plot (traffic vs score) ---
     traffic_col, score_col = None, None
     for col in active_sites_df.columns:
+        if normalize_col_name(col) in normalized_cols_to_exclude_set:
+            continue
         norm_col = normalize_col_name(col)
         if pd.api.types.is_numeric_dtype(active_sites_df[col]):
             if 'traffic' in norm_col:
@@ -473,23 +518,27 @@ def visualize_column_summary(
                 score_col = col
 
     if traffic_col and score_col:
-        # Create a temporary DataFrame with only these two columns, dropping NaNs
-        df_hex = active_sites_df[[traffic_col, score_col]].dropna()
-        df_hex = df_hex[df_hex[traffic_col].astype(str).str.lower() != 'nan']
-        df_hex = df_hex[df_hex[score_col].astype(str).str.lower() != 'nan']
+       
+        if normalize_col_name(traffic_col) not in normalized_cols_to_exclude_set and \
+           normalize_col_name(score_col) not in normalized_cols_to_exclude_set:
+            df_hex = active_sites_df[[traffic_col, score_col]].dropna()
+            df_hex = df_hex[df_hex[traffic_col].astype(str).str.lower() != 'nan']
+            df_hex = df_hex[df_hex[score_col].astype(str).str.lower() != 'nan']
 
-        if not df_hex.empty:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            hb = ax.hexbin(df_hex[traffic_col], df_hex[score_col], gridsize=30, cmap='viridis_r', mincnt=1)
-            cb = fig.colorbar(hb, ax=ax)
-            cb.set_label('Count')
-            ax.set_xlabel(traffic_col)
-            ax.set_ylabel(score_col)
-            ax.set_title(f'{traffic_col} vs {score_col} Hexbin Plot', fontsize=16, pad=20)
-            fig.tight_layout()
-            chart_title = f"{traffic_col.replace('_',' ').title()} vs {score_col.replace('_',' ').title()} Relationship"
-            chart_data.append((fig, chart_title, generate_hexbin_bullet_points(df_hex, traffic_col, score_col)))
-            plt.close(fig)
+            if not df_hex.empty:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                hb = ax.hexbin(df_hex[traffic_col], df_hex[score_col], gridsize=30, cmap='viridis_r', mincnt=1)
+                cb = fig.colorbar(hb, ax=ax)
+                cb.set_label('Count')
+                ax.set_xlabel(traffic_col)
+                ax.set_ylabel(score_col)
+                ax.set_title(f'{traffic_col} vs {score_col} Hexbin Plot', fontsize=16, pad=20)
+                fig.tight_layout()
+                chart_title = f"{traffic_col.replace('_',' ').title()} vs {score_col.replace('_',' ').title()} Relationship"
+                chart_data.append((fig, chart_title, generate_hexbin_bullet_points(df_hex, traffic_col, score_col)))
+                plt.close(fig)
+        else: 
+            print(f"Skipping hexbin plot because either '{traffic_col}' or '{score_col}' (or both) were excluded.")
 
     # Add overall conclusion
     conclusion_bullets = add_conclusion(active_sites_df)
