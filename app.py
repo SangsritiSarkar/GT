@@ -812,19 +812,29 @@ if st.button("🚀 Generate Presentation", type="primary"):
     st.session_state.generate_clicked = True
 
 if st.session_state.generate_clicked:
-    if excel_file is not None: 
+    if excel_file is not None:
+        # Initialize a progress bar
+        progress_text = "Operation in progress. Please wait."
+        my_bar = st.progress(0, text=progress_text)
+
         st.info("Processing your files... This might take a few moments.")
         try:
-           
             if not os.path.exists(PPT_TEMPLATE_PATH):
                 st.error(f"Error: Internal PowerPoint template not found at {PPT_TEMPLATE_PATH}. Please ensure 'template.pptx' is in the correct directory.")
                 st.session_state.generate_clicked = False
+                my_bar.empty() # Clear the progress bar
             else:
                 with open(PPT_TEMPLATE_PATH, "rb") as f:
                     ppt_template_buffer = io.BytesIO(f.read())
 
+                # Update progress bar before starting the long operation
+                my_bar.progress(25, text="Analyzing data...")
+
                 with st.spinner("Analyzing data and creating slides..."):
                     generated_ppt_buffer = asyncio.run(generate_report_from_files(excel_file, ppt_template_buffer))
+
+                # Update progress bar after the long operation is complete
+                my_bar.progress(100, text="Report generation complete!")
 
                 if generated_ppt_buffer:
                     st.success("PowerPoint generated successfully! 🎉")
@@ -840,15 +850,18 @@ if st.session_state.generate_clicked:
                 else:
                     st.error("Failed to generate the PowerPoint. This might be due to no valid data after cleaning or issues with the template.")
                     st.session_state.generate_clicked = False
+                my_bar.empty() # Clear the progress bar after success or failure
 
         except Exception as e:
             st.error(f"An unexpected error occurred during report generation: {e}")
             st.warning("Please ensure your Excel file is well-formatted and your PowerPoint template is valid and accessible.")
             st.expander("Show detailed error:").code(str(e))
             st.session_state.generate_clicked = False
+            my_bar.empty() # Clear the progress bar on error
     else:
-        st.warning("Please upload an Excel data file .")
+        st.warning("Please upload an Excel data file.")
         st.session_state.generate_clicked = False
+
 
 st.divider()
 
