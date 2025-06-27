@@ -793,7 +793,27 @@ async def generate_report_from_files(
  
 
 
-    active_sites_df = active_sites_df.drop_duplicates(subset=['Website Name / Domain Name'], keep='first')
+    #active_sites_df = active_sites_df.drop_duplicates(subset=['Website Name / Domain Name'], keep='first')
+    target_column_raw = 'Website Name / Domain Name'
+    normalized_target_column = normalize_col_name(target_column_raw)
+    normalized_df_columns = [normalize_col_name(col) for col in active_sites_df.columns]
+    if normalized_target_column in normalized_df_columns:
+        print(f"Column '{target_column_raw}' (normalized to '{normalized_target_column}') found. Dropping duplicates...")
+        original_column_name = None
+        for col in active_sites_df.columns:
+            if normalize_col_name(col) == normalized_target_column:
+                original_column_name = col
+                break        
+        if original_column_name:
+            active_sites_df = active_sites_df.drop_duplicates(subset=[original_column_name], keep='first')
+            print("Duplicates dropped successfully.")
+        else:
+            print(f"Error: Could not find the original column name for '{normalized_target_column}'.")
+    else:
+        print(f"Column '{target_column_raw}' (normalized to '{normalized_target_column}') does not exist in the DataFrame. No duplicates were dropped.")
+
+    print("\nUpdated DataFrame:")
+    print(active_sites_df.shape)
   
 
 
