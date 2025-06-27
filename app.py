@@ -7,27 +7,23 @@ import re
 import asyncio
 import io
 import os
-
 from typing import Any, List, Optional, Tuple
 import random
 import matplotlib.cm as cm
-
 from PIL import Image
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Emu, Pt
 
-# --- THIS IS THE CORRECT PLACE FOR st.set_page_config ---
 st.set_page_config(
     page_title="Automated Data Report Generator",
     page_icon="📊",
     layout="wide"
 )
-# --- GLOBAL VARIABLES (Place these here) ---
-# Define na_values_to_replace globally so all functions can access it
+
 na_values_to_replace = ['N/A', 'n/a', 'NA', 'N.A.', 'not applicable', '-']
-# Define other global constants if any (like PPTX constants)
+
 TITLE_FONT_NAME = 'Times New Roman'
 TITLE_FONT_COLOR = RGBColor(112, 48, 160)
 TITLE_FONT_SIZE = Pt(32)
@@ -611,25 +607,19 @@ def add_custom_chart_slide(
 
 async def build_presentation_with_charts(
     
-    #template_path: str,
-    #chart_figures_and_titles: List[Tuple[Any, str, List[str]]],
-    #output_path: str,
-    #insight_points: Optional[List[str]] = None
-#) -> None:
     
-    template_file_object: io.BytesIO, # Changed from path to file object
+    template_file_object: io.BytesIO,
     chart_figures_and_titles: List[Tuple[Any, str, List[str]]],
-    # output_path: str, # Removed, we'll return BytesIO
     insight_points: Optional[List[str]] = None
-) -> io.BytesIO: # Function now returns BytesIO
+) -> io.BytesIO:
     
     prs = Presentation(template_file_object)
-    # Removing all but the first slide
+    
     for idx in range(len(prs.slides) - 1, 0, -1):
         rId = prs.slides._sldIdLst[idx].rId
         prs.slides._sldIdLst.remove(prs.slides._sldIdLst[idx])
         prs.part.drop_rel(rId)
-    # Adding chart slides
+  
     for fig_obj, chart_title, chart_bullets in chart_figures_and_titles:
         add_custom_chart_slide(prs, fig_obj, chart_title, chart_bullets)
     # Insights slide
@@ -687,13 +677,12 @@ async def build_presentation_with_charts(
     run.font.name = TITLE_FONT_NAME
     run.font.color.rgb = RGBColor(128, 0, 128)
     tf.word_wrap = True
-    #prs.save(output_path)
-    #print(f"Presentation created at '{output_path}'")
+    
  
-    # Save to BytesIO object instead of path
+    
     output_buffer = io.BytesIO()
     prs.save(output_buffer)
-    output_buffer.seek(0) # Rewind the buffer to the beginning
+    output_buffer.seek(0) 
     return output_buffer
 
 
@@ -702,29 +691,25 @@ async def generate_report_from_files(
     excel_file_buffer: io.BytesIO,
     ppt_template_buffer: io.BytesIO
 ) -> io.BytesIO:
-    """
-    Orchestrates the entire process: reads Excel, visualizes, builds PPT, and returns PPT BytesIO.
-    """
-    #st.write("Detecting header row...")
+    
+   
     header_row_index = find_header_row(excel_file_buffer)
-    #st.write(f"Header detected at 0-indexed row: {header_row_index}")
+    
     df = pd.read_excel(excel_file_buffer, header=header_row_index)
-    #st.write("Cleaning and processing data...")
+   
 
 
     df.columns = df.columns.str.strip()
-    #st.write("Columns stripped of whitespace.")
+ 
 
 
-    df_cleaned = df.copy() # Work on a copy
+    df_cleaned = df.copy()
     na_values_to_replace = ['N/A', 'n/a', 'NA', 'N.A.', 'not applicable', '-']
     for col in df_cleaned.select_dtypes(include='object').columns:
-        df_cleaned[col] = df_cleaned[col].astype(str) # Ensure it's string before replace
+        df_cleaned[col] = df_cleaned[col].astype(str)
         df_cleaned[col] = df_cleaned[col].replace(na_values_to_replace, np.nan)
-        df_cleaned[col] = df_cleaned[col].replace(r'^\s*$', np.nan, regex=True) # Empty strings
-    #st.write("Common 'N/A' and empty string values replaced with NaN.")
+        df_cleaned[col] = df_cleaned[col].replace(r'^\s*$', np.nan, regex=True) 
 
-    # 3. Filter out inactive sites based on traffic columns
     inactive_site_indicators = ['N/A - Dead Links / Redirects', 'Dead Links', 'Redirects']
     traffic_columns = [col for col in df_cleaned.columns if "traffic" in col.lower()]
 
@@ -732,75 +717,62 @@ async def generate_report_from_files(
         active_mask = pd.Series([True] * len(df_cleaned), index=df_cleaned.index)
         for col in traffic_columns:
             col_inactive_mask = df_cleaned[col].astype(str).isin(inactive_site_indicators)
-            active_mask = active_mask & (~col_inactive_mask) # Combine masks
+            active_mask = active_mask & (~col_inactive_mask) 
         active_sites_df = df_cleaned[active_mask].copy()
-        #st.write(f"Filtered out inactive sites based on traffic-related columns: {', '.join(traffic_columns)}. Original rows: {len(df_cleaned)}, Active rows: {len(active_sites_df)}")
+        
     else:
-        #st.warning("No columns containing 'traffic' (case-insensitive) found. Skipping filtering for active sites.")
-        active_sites_df = df_cleaned.copy() # If no traffic columns, just use df_cleaned
-
-    # 4. Parse score columns using parse_score_advanced
+        
+        active_sites_df = df_cleaned.copy()
+    
     score_columns = [col for col in active_sites_df.columns if 'score' in col.lower()]
     if score_columns:
-        #st.write(f"Found score-related columns: {score_columns}. Cleaning and converting to numeric.")
+       
         for col_name in score_columns:
-            # Apply parse_score_advanced, converting to string first for robustness
+            
             active_sites_df[col_name] = active_sites_df[col_name].astype(str).apply(parse_score_advanced)
-            # Ensure column is numeric, coercing errors
+           
             active_sites_df[col_name] = pd.to_numeric(active_sites_df[col_name], errors='coerce')
     else:
         st.info("No columns containing 'score' were found. Skipping cleaning for such columns.")
 
-    # IMPORTANT: Check if the DataFrame is empty after all cleaning.
+    
     if active_sites_df.empty:
         st.error("No valid data remaining after cleaning and filtering. Cannot generate report.")
-        return None # Return None or raise an error to stop execution
+        return None 
 
 
-    # --- START OF NEW CLEANING CODE BLOCK ---
-    #st.write("Applying further cleaning steps (duplicates, categorical, and final numeric conversion)...")
+ 
 
-    # Shape before duplicate removal
-    #st.write(f"DataFrame shape before removing duplicates: {active_sites_df.shape}")
+
     active_sites_df = active_sites_df.drop_duplicates(subset=['Website Name / Domain Name'], keep='first')
-    #st.write(f"DataFrame shape after removing duplicates: {active_sites_df.shape}")
+  
 
 
     categorical_cols = active_sites_df.select_dtypes(include=['object']).columns
 
     if len(categorical_cols) > 0:
-        #st.write(f"Found potential categorical columns for cleaning: {list(categorical_cols)}")
+        
         for col_name in categorical_cols:
             active_sites_df[col_name] = active_sites_df[col_name].astype(str).str.strip()
             active_sites_df[col_name] = active_sites_df[col_name].replace(r'^\s*$', np.nan, regex=True)
-            #st.write(f"Cleaned '{col_name}' by stripping whitespace and replacing empty strings with NaN.")
+            
     else:
         st.write("No columns with 'object' dtype found to clean as categorical.")
 
-    # Final attempt to convert columns to numeric where possible
+   
     for col in active_sites_df.columns:
         converted_col = pd.to_numeric(active_sites_df[col], errors='coerce')
-        # Check if the conversion resulted in actual numeric values and a different dtype
-        # And ensure not all values became NaN (meaning it wasn't numeric to begin with)
+        
         if not converted_col.isnull().all() and converted_col.dtype != active_sites_df[col].dtype:
             active_sites_df[col] = converted_col
-            #st.write(f"Attempted to convert column '{col}' to numeric. New Dtype: {active_sites_df[col].dtype}")
-
-
-    # IMPORTANT: Check if the DataFrame is empty AGAIN after all cleaning.
+           
     if active_sites_df.empty:
         st.error("No valid data remaining after all cleaning and filtering steps. Cannot generate report.")
         return None
 
-    # --- End of Cleaning Steps ---
-    
-
-    # Now, pass the *cleaned and filtered* DataFrame to visualize_column_summary
-    #st.write("Generating charts and insights from cleaned data...")
+ 
     chart_figures_and_titles, conclusion_points = visualize_column_summary(active_sites_df)
 
-    # Build the presentation
-    #st.write("Compiling presentation slides...")
     generated_ppt_buffer = await build_presentation_with_charts(
         ppt_template_buffer,
         chart_figures_and_titles,
@@ -808,10 +780,7 @@ async def generate_report_from_files(
     )
     return generated_ppt_buffer
 
-# --- Your existing Streamlit UI Code (st.set_page_config, st.title, st.header, st.file_uploader, st.button, etc.) ---
-# This part remains largely unchanged, as it handles the Streamlit frontend.
 
-# --- Streamlit UI Code (from previous app.py, no changes needed here) ---
 
 
 st.title("📊 Automated Data Report Generator")
@@ -822,7 +791,6 @@ This application will analyze your data, generate insightful charts, and compile
 
 st.divider()
 
-# --- File Uploads ---
 st.header("1. Upload Your Files")
 
 excel_file = st.file_uploader(
@@ -834,10 +802,9 @@ excel_file = st.file_uploader(
 
 st.divider()
 
-# --- Generate Button ---
 st.header("2. Generate Your Report")
 
-# Use a session state to manage button clicks and avoid re-running unnecessarily
+
 if 'generate_clicked' not in st.session_state:
     st.session_state.generate_clicked = False
 
@@ -845,11 +812,10 @@ if st.button("🚀 Generate Presentation", type="primary"):
     st.session_state.generate_clicked = True
 
 if st.session_state.generate_clicked:
-    if excel_file is not None: # Changed condition: only check for excel_file
+    if excel_file is not None: 
         st.info("Processing your files... This might take a few moments.")
         try:
-             # Load the internal PPT template once the button is clicked
-            # and before generating the report
+           
             if not os.path.exists(PPT_TEMPLATE_PATH):
                 st.error(f"Error: Internal PowerPoint template not found at {PPT_TEMPLATE_PATH}. Please ensure 'template.pptx' is in the correct directory.")
                 st.session_state.generate_clicked = False
@@ -862,7 +828,6 @@ if st.session_state.generate_clicked:
 
                 if generated_ppt_buffer:
                     st.success("PowerPoint generated successfully! 🎉")
-                    st.balloons()
 
                     st.download_button(
                         label="⬇️ Download Your New PowerPoint",
@@ -882,11 +847,11 @@ if st.session_state.generate_clicked:
             st.expander("Show detailed error:").code(str(e))
             st.session_state.generate_clicked = False
     else:
-        st.warning("Please upload both an Excel data file and a PowerPoint template file to proceed.")
+        st.warning("Please upload an Excel data file .")
         st.session_state.generate_clicked = False
 
 st.divider()
-st.caption("Powered by Streamlit, pandas, openpyxl, python-pptx, matplotlib, and seaborn.")
+
 st.caption("Developed for Grant Thornton (GT TechTactix Assignment)")
 
 
