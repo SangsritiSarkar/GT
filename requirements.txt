@@ -1,0 +1,8 @@
+streamlit
+pandas
+openpyxl # For reading/writing Excel files
+numpy
+matplotlib
+seaborn
+python-pptx # For PowerPoint generation
+Pillow
