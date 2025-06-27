@@ -460,6 +460,11 @@ def visualize_column_summary(
 
             unique_count = non_null_series_filtered_for_plotting.nunique()
 
+            if unique_count > 0 and unique_count == len(non_null_series_filtered_for_plotting):
+                print(f"Skipping visualization for column '{col}' due to all unique non-null values (likely an ID not caught by pattern).")
+                continue
+
+
             if unique_count == 0: 
                 nan_count_for_bullet = active_sites_df[col].isnull().sum() + (active_sites_df[col].astype(str).str.lower() == 'nan').sum()
                 if nan_count_for_bullet == len(active_sites_df):
