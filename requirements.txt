@@ -1,8 +1,8 @@
 streamlit
 pandas
-openpyxl # For reading/writing Excel files
+openpyxl 
 numpy
 matplotlib
 seaborn
-python-pptx # For PowerPoint generation
+python-pptx 
 Pillow
