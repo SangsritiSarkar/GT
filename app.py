@@ -6,6 +6,7 @@ import numpy as np
 import re
 import asyncio
 import io
+import os
 
 from typing import Any, List, Optional, Tuple
 import random
@@ -43,6 +44,8 @@ TITLE_WIDTH_RATIO = 0.70
 TEXT_WIDTH_RATIO = 0.30
 IMAGE_WIDTH_RATIO = 0.70
 GAP_BETWEEN_TEXT_AND_IMAGE_RATIO = 0.02
+
+PPT_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'GT_TA.pptx')
 
 def find_header_row(file_path, num_rows_to_check=50):
 
@@ -774,12 +777,6 @@ async def generate_report_from_files(
     else:
         st.write("No columns with 'object' dtype found to clean as categorical.")
 
-
-    #st.write("--- Cleaned DataFrame Info (intermediate) ---")
-    # Streamlit doesn't show full info, but you can print for debugging if needed
-    # active_sites_df.info() # This would print to the console
-    #st.dataframe(active_sites_df.head()) # Show head in Streamlit for user
-
     # Final attempt to convert columns to numeric where possible
     for col in active_sites_df.columns:
         converted_col = pd.to_numeric(active_sites_df[col], errors='coerce')
@@ -787,15 +784,8 @@ async def generate_report_from_files(
         # And ensure not all values became NaN (meaning it wasn't numeric to begin with)
         if not converted_col.isnull().all() and converted_col.dtype != active_sites_df[col].dtype:
             active_sites_df[col] = converted_col
-            st.write(f"Attempted to convert column '{col}' to numeric. New Dtype: {active_sites_df[col].dtype}")
+            #st.write(f"Attempted to convert column '{col}' to numeric. New Dtype: {active_sites_df[col].dtype}")
 
-    #st.write("--- Cleaning Summary ---")
-    #st.write("First 5 rows of the cleaned 'active_sites' DataFrame:")
-    st.dataframe(active_sites_df.head())
-    #st.write("Data types of 'active_sites' DataFrame:")
-    # st.write(active_sites_df.info()) # Again, info prints to console
-    st.dataframe(active_sites_df.dtypes.rename('Dtype')) # More Streamlit-friendly way to show dtypes
-    #st.write(f"Shape of the cleaned DataFrame (active_sites): {active_sites_df.shape}")
 
     # IMPORTANT: Check if the DataFrame is empty AGAIN after all cleaning.
     if active_sites_df.empty:
@@ -826,7 +816,7 @@ async def generate_report_from_files(
 
 st.title("📊 Automated Data Report Generator")
 st.markdown("""
-Upload your data in an Excel file and provide a PowerPoint template.
+Upload your data in an Excel file.
 This application will analyze your data, generate insightful charts, and compile them into a professional PowerPoint presentation.
 """)
 
@@ -841,11 +831,6 @@ excel_file = st.file_uploader(
     help="This file should contain the dataset you wish to analyze and visualize."
 )
 
-ppt_template_file = st.file_uploader(
-    "Upload your **PowerPoint Template File** (.pptx)",
-    type=["pptx"],
-    help="This template will be used as the base for your generated presentation. Ensure it has relevant slide layouts."
-)
 
 st.divider()
 
@@ -860,30 +845,36 @@ if st.button("🚀 Generate Presentation", type="primary"):
     st.session_state.generate_clicked = True
 
 if st.session_state.generate_clicked:
-    if excel_file is not None and ppt_template_file is not None:
+    if excel_file is not None: # Changed condition: only check for excel_file
         st.info("Processing your files... This might take a few moments.")
         try:
-            # Use st.spinner for visual feedback during the long process
-            with st.spinner("Analyzing data and creating slides..."):
-                # Run the asynchronous function
-                generated_ppt_buffer = asyncio.run(generate_report_from_files(excel_file, ppt_template_file))
-
-            if generated_ppt_buffer:
-                st.success("PowerPoint generated successfully! 🎉")
-                st.balloons() # Visual celebration
-
-                # --- Download Button ---
-                st.download_button(
-                    label="⬇️ Download Your New PowerPoint",
-                    data=generated_ppt_buffer,
-                    file_name="Automated_Data_Report.pptx",
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    help="Click to download your newly created PowerPoint report."
-                )
-                st.session_state.generate_clicked = False # Reset button state after download link appears
-            else:
-                st.error("Failed to generate the PowerPoint. This might be due to no valid data after cleaning or issues with the template.")
+             # Load the internal PPT template once the button is clicked
+            # and before generating the report
+            if not os.path.exists(PPT_TEMPLATE_PATH):
+                st.error(f"Error: Internal PowerPoint template not found at {PPT_TEMPLATE_PATH}. Please ensure 'template.pptx' is in the correct directory.")
                 st.session_state.generate_clicked = False
+            else:
+                with open(PPT_TEMPLATE_PATH, "rb") as f:
+                    ppt_template_buffer = io.BytesIO(f.read())
+
+                with st.spinner("Analyzing data and creating slides..."):
+                    generated_ppt_buffer = asyncio.run(generate_report_from_files(excel_file, ppt_template_buffer))
+
+                if generated_ppt_buffer:
+                    st.success("PowerPoint generated successfully! 🎉")
+                    st.balloons()
+
+                    st.download_button(
+                        label="⬇️ Download Your New PowerPoint",
+                        data=generated_ppt_buffer,
+                        file_name="Automated_Data_Report.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        help="Click to download your newly created PowerPoint report."
+                    )
+                    st.session_state.generate_clicked = False
+                else:
+                    st.error("Failed to generate the PowerPoint. This might be due to no valid data after cleaning or issues with the template.")
+                    st.session_state.generate_clicked = False
 
         except Exception as e:
             st.error(f"An unexpected error occurred during report generation: {e}")
