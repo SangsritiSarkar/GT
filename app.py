@@ -636,9 +636,9 @@ async def generate_report_from_files(
             active_sites_df[col_name] = active_sites_df[col_name].astype(str).apply(parse_score_advanced)
             active_sites_df[col_name] = pd.to_numeric(active_sites_df[col_name], errors='coerce')
     else:
-        st.info("No columns containing 'score' were found. Skipping cleaning for such columns.")
+        print("No columns containing 'score' were found. Skipping cleaning for such columns.")
     if active_sites_df.empty:
-        st.error("No valid data remaining after cleaning and filtering. Cannot generate report.")
+        print("No valid data remaining after cleaning and filtering. Cannot generate report.")
         return None 
     categorical_cols = active_sites_df.select_dtypes(include=['object']).columns
     if len(categorical_cols) > 0:
@@ -646,13 +646,13 @@ async def generate_report_from_files(
             active_sites_df[col_name] = active_sites_df[col_name].astype(str).str.strip()
             active_sites_df[col_name] = active_sites_df[col_name].replace(r'^\s*$', np.nan, regex=True)
     else:
-        st.write("No columns with 'object' dtype found to clean as categorical.")
+        print("No columns with 'object' dtype found to clean as categorical.")
     for col in active_sites_df.columns:
         converted_col = pd.to_numeric(active_sites_df[col], errors='coerce')
         if not converted_col.isnull().all() and converted_col.dtype != active_sites_df[col].dtype:
             active_sites_df[col] = converted_col
     if active_sites_df.empty:
-        st.error("No valid data remaining after all cleaning and filtering steps. Cannot generate report.")
+        print("No valid data remaining after all cleaning and filtering steps. Cannot generate report.")
         return None
     chart_figures_and_titles, conclusion_points = visualize_column_summary(active_sites_df)
     generated_ppt_buffer = await build_presentation_with_charts(
